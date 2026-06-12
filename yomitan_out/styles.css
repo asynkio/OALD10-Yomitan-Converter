@@ -1,0 +1,172 @@
+/* OALD10 Yomitan Dictionary Styles (Format 3) */
+
+/* ---- Color scheme: uses Yomitan theme variables + color-mix() for dark-mode
+       compatibility.  POS badge colors (blue/green/purple/…) stay fixed –
+       they are saturated enough to work in both modes.                     ---- */
+
+div[data-sc-class="oald-entry"] {
+  font-family: "Iowan Old Style", "Source Serif 4", "Noto Serif", serif;
+  line-height: 1.55;
+}
+
+/* ---- Head ---- */
+
+div[data-sc-class="head"] {
+  margin-bottom: 0.25em;
+}
+
+span[data-sc-class="word"] {
+  font-size: 1.35em;
+  font-weight: 700;
+  margin-right: 0.35em;
+  color: var(--text-color, var(--fg, #111));
+}
+
+span[data-sc-class="type"] {
+  display: inline-block;
+  font-size: 0.7em;
+  padding: 0.1em 0.45em 0.15em;
+  border-radius: 0.25em;
+  color: #fff;
+  font-weight: 600;
+  vertical-align: middle;
+  letter-spacing: 0.02em;
+  background: #64748b;
+}
+span[data-sc-class="type"][data-sc-pos="verb"]         { background: #3b82f6; }
+span[data-sc-class="type"][data-sc-pos="noun"]         { background: #f59e0b; }
+span[data-sc-class="type"][data-sc-pos="adjective"]    { background: #10b981; }
+span[data-sc-class="type"][data-sc-pos="adverb"]       { background: #8b5cf6; }
+span[data-sc-class="type"][data-sc-pos="pronoun"]      { background: #ec4899; }
+span[data-sc-class="type"][data-sc-pos="preposition"]  { background: #f97316; }
+span[data-sc-class="type"][data-sc-pos="conjunction"]  { background: #64748b; }
+span[data-sc-class="type"][data-sc-pos="interjection"] { background: #a16207; }
+span[data-sc-class="type"][data-sc-pos="determiner"]   { background: #6366f1; }
+span[data-sc-class="type"][data-sc-pos="idiom"]        { background: #dc2626; }
+span[data-sc-class="type"][data-sc-pos="phrasal-verb"] { background: #0f172a; }
+
+/* ---- Sense ---- */
+
+div[data-sc-class="sense"] {
+  padding: 0.15em 0;
+}
+
+span[data-sc-class="num"] {
+  font-weight: 700;
+  color: color-mix(in srgb, #991b1b, var(--text-color, var(--fg, #111)));
+  font-size: 0.9em;
+}
+
+span[data-sc-class="idiom-label"] {
+  display: inline-block;
+  font-weight: 600;
+  color: color-mix(in srgb, #991b1b, var(--text-color, var(--fg, #111)));
+  font-size: 0.88em;
+  margin-right: 0.2em;
+}
+
+span[data-sc-class="meta"] {
+  display: inline-block;
+  color: color-mix(in srgb, #92400e, var(--text-color, var(--fg, #111)));
+  font-size: 0.82em;
+  margin-right: 0.15em;
+}
+
+span[data-sc-class="cf"] {
+  display: inline-block;
+  color: color-mix(in srgb, #059669, var(--text-color, var(--fg, #111)));
+  font-size: 0.88em;
+  font-style: italic;
+  margin-right: 0.25em;
+}
+
+span[data-sc-class="eng-def"] {
+  display: block;
+  color: var(--text-color, var(--fg, #1e293b));
+  margin: 0.08em 0 0.08em 0;
+}
+
+span[data-sc-class="dfcn"] {
+  display: block;
+  color: color-mix(in srgb, #2563eb, var(--text-color, var(--fg, #111)));
+  margin: 0.08em 0 0.15em 0;
+  font-size: 0.95em;
+}
+
+/* ---- Collapsible example sentences (study-aid reveal) ----
+   Dim examples by default so they don't compete with definitions.
+   Chinese translation hidden – hover English text to reveal it.   */
+
+div[data-sc-class="extra-box"][data-sc-content="example-sentence"] {
+  border-left: 0.2em solid;
+  border-color: color-mix(in srgb, var(--text-color, var(--fg, #333)) 25%, transparent);
+  margin: 0.15em 0 0.15em 0.8em;
+  padding: 0.1em 0.4em;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+div[data-sc-class="extra-box"][data-sc-content="example-sentence"]:hover {
+  opacity: 1;
+}
+
+div[data-sc-content="example-sentence-a"] {
+  font-size: 0.9em;
+  color: var(--text-color, var(--fg, #334155));
+  margin: 0.1em 0;
+}
+
+/* Chinese translation hidden by default */
+div[data-sc-content="example-sentence-b"] {
+  font-size: 0.85em;
+  color: color-mix(in srgb, #2563eb, var(--text-color, var(--fg, #111)));
+  margin: 0.05em 0 0.1em 0.3em;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.3s ease, max-height 0.3s ease;
+}
+
+/* Reveal on hover over English text, keep visible when hovering translation */
+div[data-sc-content="example-sentence-a"]:hover + div[data-sc-content="example-sentence-b"],
+div[data-sc-content="example-sentence-b"]:hover {
+  opacity: 1;
+  max-height: 20em;
+}
+
+/* ---- Cross-references ---- */
+
+div[data-sc-class="xref"] {
+  font-size: 0.85em;
+  color: color-mix(in srgb, #475569, var(--text-color, var(--fg, #111)));
+  margin: 0.1em 0;
+  padding: 0.05em 0.3em;
+}
+div[data-sc-class="xref"] a {
+  color: color-mix(in srgb, #1d4ed8, var(--text-color, var(--fg, #111)));
+  text-decoration: underline;
+}
+div[data-sc-class="xref"] a:hover {
+  text-decoration: none;
+}
+
+/* ---- Phrasal verb section ---- */
+
+div[data-sc-class="pv"] {
+  margin-top: 0.25em;
+  padding: 0.2em 0.4em;
+  border-top: 1px solid;
+  border-color: color-mix(in srgb, var(--text-color, var(--fg, #333)) 15%, transparent);
+  font-size: 0.88em;
+  color: var(--text-color, var(--fg, #334155));
+}
+
+span[data-sc-class="pv-label"] {
+  font-weight: 600;
+  margin-right: 0.3em;
+}
+
+span[data-sc-class="pv-link"] {
+  display: inline-block;
+  color: color-mix(in srgb, #1d4ed8, var(--text-color, var(--fg, #111)));
+  margin-right: 0.4em;
+}
