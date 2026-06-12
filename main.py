@@ -109,7 +109,13 @@ def build_entry(word, pos, senses, pv_links=None):
         for i, pv in enumerate(pv_links):
             if i > 0:
                 pv_list.append(", ")
-            pv_list.append(node("span", pv, data={"class": "pv-link"}))
+            pv_list.append(
+                node(
+                    "span",
+                    node("a", pv, href=f"?query={quote(pv)}"),
+                    data={"class": "pv-link"},
+                )
+            )
         parts.append(node("div", pv_list, data={"class": "pv"}))
 
     return node("div", parts, data={"class": "oald-entry"})
