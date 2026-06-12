@@ -9,42 +9,6 @@ div[data-sc-class="oald-entry"] {
   line-height: 1.55;
 }
 
-/* ---- Head ---- */
-
-div[data-sc-class="head"] {
-  margin-bottom: 0.25em;
-}
-
-span[data-sc-class="word"] {
-  font-size: 1.35em;
-  font-weight: 700;
-  margin-right: 0.35em;
-  color: var(--text-color, var(--fg, #111));
-}
-
-span[data-sc-class="type"] {
-  display: inline-block;
-  font-size: 0.7em;
-  padding: 0.1em 0.45em 0.15em;
-  border-radius: 0.25em;
-  color: #fff;
-  font-weight: 600;
-  vertical-align: middle;
-  letter-spacing: 0.02em;
-  background: #64748b;
-}
-span[data-sc-class="type"][data-sc-pos="verb"]         { background: #3b82f6; }
-span[data-sc-class="type"][data-sc-pos="noun"]         { background: #f59e0b; }
-span[data-sc-class="type"][data-sc-pos="adjective"]    { background: #10b981; }
-span[data-sc-class="type"][data-sc-pos="adverb"]       { background: #8b5cf6; }
-span[data-sc-class="type"][data-sc-pos="pronoun"]      { background: #ec4899; }
-span[data-sc-class="type"][data-sc-pos="preposition"]  { background: #f97316; }
-span[data-sc-class="type"][data-sc-pos="conjunction"]  { background: #64748b; }
-span[data-sc-class="type"][data-sc-pos="interjection"] { background: #a16207; }
-span[data-sc-class="type"][data-sc-pos="determiner"]   { background: #6366f1; }
-span[data-sc-class="type"][data-sc-pos="idiom"]        { background: #dc2626; }
-span[data-sc-class="type"][data-sc-pos="phrasal-verb"] { background: #0f172a; }
-
 /* ---- Sense ---- */
 
 div[data-sc-class="sense"] {
@@ -165,7 +129,7 @@ span[data-sc-class="pv-label"] {
   margin-right: 0.3em;
 }
 
-span[data-sc-class="pv-link"] {
+a[data-sc-class="pv-link"] {
   display: inline-block;
   color: color-mix(in srgb, #1d4ed8, var(--text-color, var(--fg, #111)));
   margin-right: 0.4em;

@@ -53,13 +53,6 @@ def build_entry(word, pos, senses, pv_links=None):
     """Assemble the structured-content tree for one word + POS."""
     parts = []
 
-    # ---- Head ----
-    head_parts = [node("span", word, data={"class": "word"})]
-    if pos:
-        pos_key = pos.lower().replace(" ", "-")
-        head_parts.append(node("span", pos, data={"class": "type", "pos": pos_key}))
-    parts.append(node("div", head_parts, data={"class": "head"}))
-
     # ---- Senses ----
     for i, sense in enumerate(senses):
         sp = []
