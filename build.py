@@ -30,17 +30,17 @@ INDEX_DATA = {
 
 
 TAG_BANK = [
-    ["n", "partOfSpeech", 0, "名词 (Noun)", 0],
-    ["v", "partOfSpeech", 0, "动词 (Verb)", 0],
-    ["adj", "partOfSpeech", 0, "形容词 (Adjective)", 0],
-    ["adv", "partOfSpeech", 0, "副词 (Adverb)", 0],
-    ["pron", "partOfSpeech", 0, "代词 (Pronoun)", 0],
-    ["prep", "partOfSpeech", 0, "介词 (Preposition)", 0],
-    ["conj", "partOfSpeech", 0, "连词 (Conjunction)", 0],
-    ["intj", "partOfSpeech", 0, "感叹词 (Interjection)", 0],
-    ["det", "partOfSpeech", 0, "限定词 (Determiner)", 0],
-    ["idio", "expression", 0, "习语 (Idiom)", 0],
-    ["phr-v", "expression", 0, "动词短语 (Phrasal Verb)", 0],
+    ["noun", "partOfSpeech", 0, "名词 (Noun)", 0],
+    ["verb", "partOfSpeech", 0, "动词 (Verb)", 0],
+    ["adjective", "partOfSpeech", 0, "形容词 (Adjective)", 0],
+    ["adverb", "partOfSpeech", 0, "副词 (Adverb)", 0],
+    ["pronoun", "partOfSpeech", 0, "代词 (Pronoun)", 0],
+    ["preposition", "partOfSpeech", 0, "介词 (Preposition)", 0],
+    ["conjunction", "partOfSpeech", 0, "连词 (Conjunction)", 0],
+    ["interjection", "partOfSpeech", 0, "感叹词 (Interjection)", 0],
+    ["determiner", "partOfSpeech", 0, "限定词 (Determiner)", 0],
+    ["idiom", "expression", 0, "习语 (Idiom)", 0],
+    ["phrasal-verb", "expression", 0, "动词短语 (Phrasal Verb)", 0],
     [
         "Oxford Advanced Learner's Dictionary (10th China Edition)",
         "dictionary",
