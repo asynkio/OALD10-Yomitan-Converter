@@ -60,7 +60,7 @@ def build_entry(word, pos, senses, pv_links=None):
             sp.append(node("span", chr(0x2460 + i) + " ", data={"class": "num"}))
         if sense.get("idiom"):
             sp.append(
-                node("span", "◆ " + sense["idiom"], data={"class": "idiom-label"})
+                node("span", "⬩ " + sense["idiom"], data={"class": "idiom-label"})
             )
         if sense.get("meta"):
             sp.append(node("span", sense["meta"], data={"class": "meta"}))
@@ -104,7 +104,7 @@ def build_entry(word, pos, senses, pv_links=None):
     # ---- Phrasal verbs ----
     if pv_links:
         pv_list = [
-            node("span", "◆ 相关短语动词 (Phrasal Verbs): ", data={"class": "pv-label"})
+            node("span", "⬩ 相关短语动词 (Phrasal Verbs): ", data={"class": "pv-label"})
         ]
         for i, pv in enumerate(pv_links):
             if i > 0:
