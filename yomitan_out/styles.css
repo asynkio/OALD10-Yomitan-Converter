@@ -30,7 +30,7 @@ span[data-sc-class="idiom-label"] {
 }
 
 span[data-sc-class="meta"] {
-  display: inline-block;
+  display: inline;
   color: color-mix(in srgb, #92400e, var(--text-color, var(--fg, #111)));
   font-size: 0.82em;
   margin-right: 0.15em;

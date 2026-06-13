@@ -308,7 +308,7 @@ def parse_mdict():
                         eng = g_node.get_text(separator=" ", strip=True).strip("()[] ")
                         txt = f"{eng} {chn_text}".strip()
                         if txt:
-                            global_meta.append(f"【{txt}】")
+                            global_meta.append(f"[{txt}]")
 
                 raw_senses = entry_block.find_all("li", class_="sense")
                 sense_data = []
@@ -335,7 +335,7 @@ def parse_mdict():
                         eng = l_node.get_text(separator=" ", strip=True).strip("()[] ")
                         txt = f"{eng} {chn_text}".strip()
                         if txt:
-                            local_meta.append(f"【{txt}】")
+                            local_meta.append(f"[{txt}]")
 
                     combined_meta = global_meta + local_meta
                     meta_info = "".join(dict.fromkeys(combined_meta))
