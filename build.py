@@ -21,7 +21,7 @@ OUTPUT_DIR = PROJECT_DIR / "yomitan_out"
 INDEX_DATA = {
     "title": "OALDe10-enzh",
     "format": 3,
-    "revision": "v1.1.1",
+    "revision": "v1.1.2",
     "sequenced": True,
     "author": "Open Source Converter",
     "url": "https://github.com/asynkio/OALD10-Yomitan-Converter",
