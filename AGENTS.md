@@ -4,6 +4,8 @@ Structure: single `main.py` parses OALD10 EN-ZH MDX text dump into Yomitan JSON 
 
 - `oaldpex/` — original MDX/MDD/CSS/JS source files (not processed)
 - `yomitan_out/` — generated output (gitignored; created at runtime)
+- `styles.css` — core dictionary styles (copied into `yomitan_out/` during build)
+- `custom.css` — optional study-aid CSS (blur/hide Chinese, for Yomitan custom CSS)
 - `pyproject.toml` — uv project metadata (dependency: `beautifulsoup4`)
 
 ## Build workflow
@@ -21,7 +23,7 @@ uv run python main.py
 Output lands in `yomitan_out/`:
 
 - `term_bank_N.json` (~10k entries each, format 3 structured-content)
-- `styles.css` (ship alongside term banks in the zip)
+- `styles.css` (copied from root by build script)
 - `dead_links_report.txt` (unresolvable redirects)
 
 Manual steps after generation:
@@ -29,6 +31,7 @@ Manual steps after generation:
 1. Create `index.json` with `"format": 3`, `"sourceLanguage": "en"`, `"targetLanguage": "zh"`
 2. Create `tag_bank_1.json` (POS tags for Yomitan filtering)
 3. Zip all `.json` files + `styles.css` together and import into Yomitan
+4. Optional: paste `custom.css` content into Yomitan's Custom CSS for study-aid interactions
 
 ## What the script does
 
