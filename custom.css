@@ -1,0 +1,60 @@
+/* OALD10 Yomitan Dictionary — Custom Study-Aid Styles
+   ======================================================
+   Add this file's content to Yomitan's "Custom CSS" field
+   (Settings → Configure clipboard popup & dictionary → Custom CSS)
+   for additional learning-aid interactions.
+*/
+
+/* ---- Collapsible example sentences (study-aid reveal) ----
+   Dim examples by default so they don't compete with definitions.
+   Chinese translation hidden – hover English text to reveal it.   */
+
+div[data-sc-class="extra-box"][data-sc-content="example-sentence"] {
+  border-left: 0.2em solid;
+  border-color: color-mix(in srgb, var(--text-color, var(--fg, #333)) 25%, transparent);
+  margin: 0.15em 0 0.15em 0.8em;
+  padding: 0.1em 0.4em;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+div[data-sc-class="extra-box"][data-sc-content="example-sentence"]:hover {
+  opacity: 1;
+}
+
+div[data-sc-content="example-sentence-a"] {
+  font-size: 0.9em;
+  color: var(--text-color, var(--fg, #334155));
+  margin: 0.1em 0;
+}
+
+/* Chinese translation hidden by default */
+div[data-sc-content="example-sentence-b"] {
+  font-size: 0.85em;
+  color: color-mix(in srgb, #2563eb, var(--text-color, var(--fg, #111)));
+  margin: 0.05em 0 0.1em 0.3em;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.3s ease, max-height 0.3s ease;
+}
+
+/* Reveal on hover over English text, keep visible when hovering translation */
+div[data-sc-content="example-sentence-a"]:hover + div[data-sc-content="example-sentence-b"],
+div[data-sc-content="example-sentence-b"]:hover {
+  opacity: 1;
+  max-height: 20em;
+}
+
+/* ---- Study aid: blur Chinese definitions, reveal on hover ---- */
+
+span[data-sc-class="dfcn"] {
+  filter: blur(4px);
+  transition: filter 0.25s ease;
+  cursor: help;
+  user-select: none;
+}
+
+span[data-sc-class="dfcn"]:hover {
+  filter: blur(0);
+  user-select: auto;
+}
