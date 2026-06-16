@@ -136,6 +136,15 @@ def ensure_aux_files():
         else:
             print(f"    {name} already exists — skipped")
 
+    # Copy styles.css from project root into output directory
+    src_css = PROJECT_DIR / "styles.css"
+    dst_css = OUTPUT_DIR / "styles.css"
+    if src_css.exists():
+        shutil.copy2(src_css, dst_css)
+        print(f"    Copied styles.css -> {OUTPUT_DIR.name}/")
+    else:
+        print(f"    Warning: {src_css.name} not found in project root")
+
 
 def pack_zip():
     step("Packing Yomitan zip...")

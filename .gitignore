@@ -219,7 +219,6 @@ __marimo__/
 
 # Dictionary Data
 oaldpe*
-yomitan_out/*.json
-yomitan_out/dead_links_report.txt
+yomitan_out/
 *.zip
 *.mdx
