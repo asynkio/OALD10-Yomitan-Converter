@@ -120,16 +120,15 @@ def build_entry(word, pos, senses, pv_links=None):
                     by_label[label] = []
                 by_label[label].append(vi["word"])
             for label, words in by_label.items():
-                var_spans = [
-                    node("span", f"⬩ {label}: ", data={"class": "var-label"})
-                ]
+                var_children = [f"[{label}: "]
                 for j, w in enumerate(words):
                     if j > 0:
-                        var_spans.append(", ")
-                    var_spans.append(
+                        var_children.append(", ")
+                    var_children.append(
                         node("a", w, href=f"?query={quote(w)}&wildcards=off")
                     )
-                sp.append(node("span", var_spans, data={"class": "variant"}))
+                var_children.append("]")
+                sp.append(node("span", var_children, data={"class": "variant"}))
         if sense.get("eng_def"):
             sp.append(node("span", sense["eng_def"], data={"class": "eng-def"}))
         if sense.get("chn_def"):
@@ -296,7 +295,7 @@ def extract_xrefs(sense_li):
 def generate_metadata_files(output_dir):
     """Generate Yomitan-required index.json and tag_bank_1.json."""
     index_data = {
-        "title": "Oxford Advanced Learner's Dictionary 10th",
+        "title": "OALDe10-enzh",
         "format": 3,
         "revision": f"v{VERSION}",
         "sequenced": True,
@@ -354,9 +353,7 @@ def package_and_cleanup(output_dir):
     files_to_zip.extend(term_banks)
 
     # Ensure styles.css is copied into output dir and included in zip
-    styles_src = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "styles.css"
-    )
+    styles_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "styles.css")
     styles_dst = os.path.join(output_dir, "styles.css")
     if os.path.exists(styles_src):
         shutil.copy2(styles_src, styles_dst)
@@ -484,9 +481,7 @@ def parse_mdict_stable(input_file, output_dir):
                         local_meta_parts = []
                         sensetop = sense.find("span", class_="sensetop")
                         if sensetop:
-                            local_meta_parts = _extract_meta_parts(
-                                sensetop, META_LOCAL
-                            )
+                            local_meta_parts = _extract_meta_parts(sensetop, META_LOCAL)
 
                         # 2) tags that are direct children of <li class="sense">
                         #    but outside <span class="sensetop">
@@ -499,16 +494,12 @@ def parse_mdict_stable(input_file, output_dir):
                                 if chn_subtags:
                                     cn = node.find(chn_subtags[0]) or node.find("chn")
                                     if cn:
-                                        chn_text = cn.get_text(
-                                            separator="", strip=True
-                                        )
-                                        for c in node.find_all(
-                                            chn_subtags + ["chn"]
-                                        ):
+                                        chn_text = cn.get_text(separator="", strip=True)
+                                        for c in node.find_all(chn_subtags + ["chn"]):
                                             c.decompose()
-                                eng = node.get_text(
-                                    separator=" ", strip=True
-                                ).strip("()[] ")
+                                eng = node.get_text(separator=" ", strip=True).strip(
+                                    "()[] "
+                                )
                                 txt = f"{eng} {chn_text}".strip()
                                 if txt:
                                     local_meta_parts.append(f"[{txt}]")
@@ -598,9 +589,7 @@ def parse_mdict_stable(input_file, output_dir):
                         # Decompose label-like spans to prevent their <chn>
                         # subtags from being mistaken as the definition
                         for label_class in ("labels", "grammar", "use", "dis-g"):
-                            for label_tag in sense.find_all(
-                                "span", class_=label_class
-                            ):
+                            for label_tag in sense.find_all("span", class_=label_class):
                                 label_tag.decompose()
                         deft_tag = sense.find("deft") or sense.find("chn")
                         if deft_tag:
@@ -680,9 +669,7 @@ def parse_mdict_stable(input_file, output_dir):
 
             resolved_display = mdx_to_display.get(current_target, current_target)
             if resolved_display not in real_entries:
-                dead_links_report.append(
-                    f"{word}  ==指向==>  {t}"
-                )
+                dead_links_report.append(f"{word}  ==指向==>  {t}")
 
     print(f"  [ok] Phase 2 Complete.  Dead links: {len(dead_links_report)}")
 

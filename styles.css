@@ -80,22 +80,17 @@ span[data-sc-class="cf"] {
   margin-right: 0.25em;
 }
 
-/* ---- Variant cross-references ---- */
+/* ---- Variant cross-references (bracket style like meta) ---- */
 
 span[data-sc-class="variant"] {
-  display: block;
-  margin: 0.05em 0;
-  font-size: 0.85em;
-  color: color-mix(in srgb, #78716c, var(--text-color, var(--fg, #555)));
-}
-
-span[data-sc-class="var-label"] {
-  font-style: italic;
-  margin-right: 0.2em;
+  display: inline;
+  color: #2563eb;
+  font-size: 0.82em;
+  margin-right: 0.15em;
 }
 
 span[data-sc-class="variant"] a {
-  color: color-mix(in srgb, #1d4ed8, var(--text-color, var(--fg, #111)));
+  color: #2563eb;
   text-decoration: underline;
 }
 
