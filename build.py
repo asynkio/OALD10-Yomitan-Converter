@@ -1,54 +1,20 @@
 #!/usr/bin/env python3
 """Build script for OALD10 Yomitan Dictionary.
-Automates dependency install, MDX unpacking, parsing, and packaging.
+Automates dependency install, MDX unpacking, and parsing.
+(Metadata generation, zip packaging, and cleanup are now handled by main.py.)
 """
 
 import argparse
-import json
 import os
-import re
 import shutil
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent
-INPUT_MDX = PROJECT_DIR / "oaldpex/oaldpe.mdx"
+INPUT_MDX = PROJECT_DIR / "oaldpex" / "oaldpe.mdx"
 INPUT_TXT = PROJECT_DIR / "oaldpe.txt"
 OUTPUT_DIR = PROJECT_DIR / "yomitan_out"
-
-INDEX_DATA = {
-    "title": "OALDe10-enzh",
-    "format": 3,
-    "revision": "v1.1.2",
-    "sequenced": True,
-    "author": "Open Source Converter",
-    "url": "https://github.com/asynkio/OALD10-Yomitan-Converter",
-    "description": "牛津高阶英汉双解词典（第 10 版）\n\n内容由牛津大学出版社版权所有。本词典仅用于个人学习、研究用途。",
-}
-
-
-TAG_BANK = [
-    ["noun", "partOfSpeech", 0, "名词 (Noun)", 0],
-    ["verb", "partOfSpeech", 0, "动词 (Verb)", 0],
-    ["adjective", "partOfSpeech", 0, "形容词 (Adjective)", 0],
-    ["adverb", "partOfSpeech", 0, "副词 (Adverb)", 0],
-    ["pronoun", "partOfSpeech", 0, "代词 (Pronoun)", 0],
-    ["preposition", "partOfSpeech", 0, "介词 (Preposition)", 0],
-    ["conjunction", "partOfSpeech", 0, "连词 (Conjunction)", 0],
-    ["interjection", "partOfSpeech", 0, "感叹词 (Interjection)", 0],
-    ["determiner", "partOfSpeech", 0, "限定词 (Determiner)", 0],
-    ["idiom", "expression", 0, "习语 (Idiom)", 0],
-    ["phrasal-verb", "expression", 0, "动词短语 (Phrasal Verb)", 0],
-    [
-        "Oxford Advanced Learner's Dictionary (10th China Edition)",
-        "dictionary",
-        -10,
-        "牛津高阶英汉双解词典 第10版",
-        0,
-    ],
-]
 
 
 def step(msg):
@@ -81,8 +47,8 @@ def check_inputs(skip_unpack):
     if not INPUT_MDX.exists():
         print(
             f"Error: {INPUT_MDX.name} not found.\n"
-            f"Download it from Freemdict and place the oaldpex folder in {PROJECT_DIR}."
-            f"Make sure that {PROJECT_DIR}/oaldpex/oaldpe.mdx exist."
+            f"Download it from Freemdict and place the oaldpex folder in {PROJECT_DIR}.\n"
+            f"Make sure {INPUT_MDX} exists."
         )
         sys.exit(1)
     if skip_unpack:
@@ -117,47 +83,19 @@ def install_project_deps():
 
 def run_parser():
     step("Parsing dictionary entries (this may take a while)...")
+    args = [
+        "-i",
+        str(INPUT_TXT),
+        "-o",
+        str(OUTPUT_DIR),
+    ]
     if has_uv():
-        run(["uv", "run", "python", "main.py"], cwd=PROJECT_DIR)
+        run(
+            ["uv", "run", "python", "main.py"] + args,
+            cwd=PROJECT_DIR,
+        )
     else:
-        run([sys.executable, "main.py"], cwd=PROJECT_DIR)
-
-
-def ensure_aux_files():
-    step("Ensuring auxiliary files...")
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    for name, data in [("index.json", INDEX_DATA), ("tag_bank_1.json", TAG_BANK)]:
-        path = OUTPUT_DIR / name
-        if not path.exists():
-            print(f"    Creating {name}")
-            path.write_text(
-                json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-            )
-        else:
-            print(f"    {name} already exists — skipped")
-
-    # Copy styles.css from project root into output directory
-    src_css = PROJECT_DIR / "styles.css"
-    dst_css = OUTPUT_DIR / "styles.css"
-    if src_css.exists():
-        shutil.copy2(src_css, dst_css)
-        print(f"    Copied styles.css -> {OUTPUT_DIR.name}/")
-    else:
-        print(f"    Warning: {src_css.name} not found in project root")
-
-
-def pack_zip():
-    step("Packing Yomitan zip...")
-    files = sorted(OUTPUT_DIR.glob("*.json"))
-    css = OUTPUT_DIR / "styles.css"
-    if css.exists():
-        files.append(css)
-    zip_path = PROJECT_DIR / "oald10_yomitan.zip"
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fp in files:
-            print(f"    Adding {fp.name}")
-            zf.write(fp, arcname=fp.name)
-    print(f"\n    Zip created: {zip_path}")
+        run([sys.executable, "main.py"] + args, cwd=PROJECT_DIR)
 
 
 def main():
@@ -172,7 +110,7 @@ def main():
     parser.add_argument(
         "--no-zip",
         action="store_true",
-        help="Skip final zip packaging",
+        help="[DEPRECATED] Packaging is now handled by main.py.  Use -o to control output.",
     )
     args = parser.parse_args()
 
@@ -185,10 +123,6 @@ def main():
 
     install_project_deps()
     run_parser()
-    ensure_aux_files()
-
-    if not args.no_zip:
-        pack_zip()
 
     print("\nBuild complete!")
 

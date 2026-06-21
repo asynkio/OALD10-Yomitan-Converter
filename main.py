@@ -1,21 +1,59 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 """
 OALD 10 to Yomitan Dictionary Converter (Format 3)
 ====================================================
 Parses the OALD10 EN-ZH MDX text dump into Yomitan structured-content JSON
 with CSS styling, collapsible examples, and no AI-translated content.
+
+Features: CLI interface, auto-packaging (index/tag_bank/zip), multi-key
+entries, multi-target redirects, strict DOM tag isolation, British/American
+variants extraction, Joint PK deduplication, and data forensics reports.
 """
 
 import json
 import os
 import re
+import argparse
+import shutil
+import zipfile
+import glob
 from urllib.parse import quote
 from bs4 import BeautifulSoup
 
-INPUT_FILE = "oaldpe.txt"
-OUTPUT_DIR = "yomitan_out"
+VERSION = "2.1.0"
 
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
+
+# ---------------------------------------------------------------------------
+# Helper: extract meta tags from a container (labels/grammar/use/dis-g)
+# ---------------------------------------------------------------------------
+
+
+def _extract_meta_parts(container, tag_defs):
+    """Extract ``[eng chn]`` meta strings from *container*.
+
+    ``tag_defs`` is an iterable of ``(tag_name, [chn_subtag, ...])``
+    tuples.  Chinese subtags are decomposed in-place so they don't
+    pollute downstream text extraction.
+    """
+    parts = []
+    for tag_name, chn_subtags in tag_defs:
+        node = container.find("span", class_=tag_name)
+        if not node:
+            continue
+        chn_text = ""
+        if chn_subtags:
+            cn = node.find(chn_subtags[0]) or node.find("chn")
+            if cn:
+                chn_text = cn.get_text(separator="", strip=True)
+                for c in node.find_all(chn_subtags + ["chn"]):
+                    c.decompose()
+        eng = node.get_text(separator=" ", strip=True).strip("()[] ")
+        txt = f"{eng} {chn_text}".strip()
+        if txt:
+            parts.append(f"[{txt}]")
+    return parts
 
 
 # ---------------------------------------------------------------------------
@@ -49,9 +87,23 @@ def node(tag, content=None, *, data=None, lang=None, style=None, href=None, titl
     return n
 
 
-def build_entry(word, pos, senses, pv_links=None):
-    """Assemble the structured-content tree for one word + POS."""
+def build_entry(word, pos, senses, pv_links=None, trace=None):
+    """Assemble the structured-content tree for one word + POS.
+
+    If *trace* is given, a ``div.trace`` is prepended to the entry
+    body (used for redirect-derived entries).
+    """
     parts = []
+
+    # Trace header (derivative entries)
+    if trace:
+        parts.append(
+            node(
+                "div",
+                node("span", trace, data={"class": "trace-header"}),
+                data={"class": "trace"},
+            )
+        )
 
     # ---- Head ----
     head_parts = [node("span", word, data={"class": "word"})]
@@ -232,268 +284,557 @@ def extract_xrefs(sense_li):
 
 
 # ---------------------------------------------------------------------------
+# Metadata generation & auto-packaging
+# ---------------------------------------------------------------------------
+
+
+def generate_metadata_files(output_dir):
+    """Generate Yomitan-required index.json and tag_bank_1.json."""
+    index_data = {
+        "title": "Oxford Advanced Learner's Dictionary 10th",
+        "format": 3,
+        "revision": f"v{VERSION}",
+        "sequenced": True,
+        "author": "OALD10-Yomitan-Converter",
+        "url": "https://github.com/asynkio/OALD10-Yomitan-Converter",
+        "description": (
+            "牛津高阶英汉双解词典（第 10 版）\n"
+            "Oxford Advanced Learner's Dictionary (10th Edition) En-Zh.\n"
+            "Includes phrasal verbs, idioms, and deduplicated multi-source definitions."
+        ),
+    }
+    with open(os.path.join(output_dir, "index.json"), "w", encoding="utf-8") as f:
+        json.dump(index_data, f, ensure_ascii=False, indent=2)
+    print("  [+] Created index.json")
+
+    tag_data = [
+        ["noun", "partOfSpeech", 0, "名词 (Noun)", 0],
+        ["verb", "partOfSpeech", 0, "动词 (Verb)", 0],
+        ["adjective", "partOfSpeech", 0, "形容词 (Adjective)", 0],
+        ["adverb", "partOfSpeech", 0, "副词 (Adverb)", 0],
+        ["pronoun", "partOfSpeech", 0, "代词 (Pronoun)", 0],
+        ["preposition", "partOfSpeech", 0, "介词 (Preposition)", 0],
+        ["conjunction", "partOfSpeech", 0, "连词 (Conjunction)", 0],
+        ["interjection", "partOfSpeech", 0, "感叹词 (Interjection)", 0],
+        ["determiner", "partOfSpeech", 0, "限定词 (Determiner)", 0],
+        ["idiom", "expression", 0, "习语 (Idiom)", 0],
+        ["phrasal verb", "expression", 0, "动词短语 (Phrasal Verb)", 0],
+        [
+            "Oxford Advanced Learner's Dictionary",
+            "dictionary",
+            -10,
+            "牛津高阶英汉双解词典 第10版",
+            0,
+        ],
+    ]
+    with open(os.path.join(output_dir, "tag_bank_1.json"), "w", encoding="utf-8") as f:
+        json.dump(tag_data, f, ensure_ascii=False, separators=(",", ":"))
+    print("  [+] Created tag_bank_1.json")
+
+
+def package_and_cleanup(output_dir):
+    """Zip all JSON files and styles.css into a ready-to-import archive,
+    then delete temporary term_bank chunks."""
+    zip_filename = f"OALD10_Yomitan_v{VERSION}.zip"
+    zip_filepath = os.path.join(output_dir, zip_filename)
+
+    index_file = os.path.join(output_dir, "index.json")
+    tag_files = glob.glob(os.path.join(output_dir, "tag_bank_*.json"))
+    term_banks = glob.glob(os.path.join(output_dir, "term_bank_*.json"))
+
+    files_to_zip = []
+    if os.path.exists(index_file):
+        files_to_zip.append(index_file)
+    files_to_zip.extend(tag_files)
+    files_to_zip.extend(term_banks)
+
+    # Ensure styles.css is copied into output dir and included in zip
+    styles_src = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "styles.css"
+    )
+    styles_dst = os.path.join(output_dir, "styles.css")
+    if os.path.exists(styles_src):
+        shutil.copy2(styles_src, styles_dst)
+        files_to_zip.append(styles_dst)
+
+    if not files_to_zip:
+        print("  [!] No files found to zip.  Skipping packaging.")
+        return
+
+    print(f"\n==> Packing dictionary into: {zip_filename}")
+
+    with zipfile.ZipFile(zip_filepath, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fp in files_to_zip:
+            arcname = os.path.basename(fp)
+            print(f"    Adding {arcname}")
+            zf.write(fp, arcname)
+
+    print("==> Cleaning up temporary JSON chunks...")
+    for fp in term_banks:
+        try:
+            os.remove(fp)
+        except OSError as e:
+            print(f"    [!] Failed to delete {os.path.basename(fp)}: {e}")
+
+    print(f"==> Packaging complete!  Final file: {zip_filepath}")
+
+
+# ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
 
 
-def parse_mdict():
-    print("Phase 1: Building Core Dictionary & Collecting Redirects...")
-    real_entries = {}
-    redirects = {}
-    mdx_to_display = {}  # MDX key → display form (for redirect resolution)
+def parse_mdict_stable(input_file, output_dir):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-    if not os.path.exists(INPUT_FILE):
-        print(f"Error: {INPUT_FILE} not found.  Unpack the MDX file first.")
+    print(f"=== OALD 10 to Yomitan Converter v{VERSION} ===")
+    print(f"Input File:  {input_file}")
+    print(f"Output Dir:  {output_dir}\n")
+
+    # Common meta-tag definitions (tag_name, [chn_subtag, ...])
+    META_GLOBAL = (
+        ("labels", ["labelx", "chn"]),
+        ("grammar", []),
+        ("use", ["uset", "chn"]),
+    )
+    META_LOCAL = META_GLOBAL + (("dis-g", ["dtxtx", "chn"]),)
+
+    # =======================================================
+    # Phase 1: Parse Core Dictionary & Collect Redirects
+    # =======================================================
+    print("Phase 1/4: Building core vocabulary and extracting DOM structures...")
+    real_entries = {}  # display_word -> [entry_dict, ...]
+    redirects = {}  # mdx_key -> [target_key, ...]
+    mdx_to_display = {}  # MDX key -> display form (for redirect resolution)
+
+    if not os.path.exists(input_file):
+        print(f"Error: '{input_file}' not found.  Unpack the MDX file first.")
         return
 
-    with open(INPUT_FILE, "r", encoding="utf-8") as f:
+    with open(input_file, "r", encoding="utf-8") as f:
         buffer = []
         for line in f:
             line = line.strip()
-            if line != "</>":
-                buffer.append(line)
-                continue
+            if line == "</>":
+                entry_text = "\n".join(buffer)
+                buffer = []
+                lines = entry_text.split("\n")
+                if len(lines) < 2:
+                    continue
 
-            entry_text = "\n".join(buffer)
-            buffer = []
-            lines = entry_text.split("\n")
-            if len(lines) < 2:
-                continue
-            mdx_key = lines[0].strip()
-            content = "".join(lines[1:])
+                words = [w.strip() for w in lines[0].split("|") if w.strip()]
+                content = "".join(lines[1:])
 
-            # Redirect
-            if "@@@LINK=" in content:
-                target = content.replace("@@@LINK=", "").strip()
-                redirects[mdx_key] = target
-                continue
-
-            soup = BeautifulSoup(content, "html.parser")
-
-            # Use the correct display form from HTML rather than the MDX key.
-            # Normalise thin spaces (U+2009) etc. to regular spaces so that
-            # user-typed queries match.
-            hw = soup.find("h1", class_="headword")
-            word = hw.get_text(strip=True) if hw else mdx_key
-            word = re.sub(r"[\u2000-\u200A\u202F\u00A0]", " ", word)
-            mdx_to_display[mdx_key] = word
-
-            entries_list = []
-            entry_blocks = soup.find_all("div", class_="entry")
-            if not entry_blocks:
-                entry_blocks = soup.find_all("span", class_="idm-g")
-
-            for entry_block in entry_blocks:
-                pos_tag = entry_block.find("span", class_="pos")
-                pos = pos_tag.get_text(strip=True) if pos_tag else ""
-                if (
-                    not pos
-                    and entry_block.name == "span"
-                    and "idm-g" in entry_block.get("class", [])
-                ):
-                    pos = "idiom"
-
-                # --- Global meta tags ---
-                global_meta = []
-                webtop = entry_block.find("div", class_="webtop")
-                if webtop:
-                    for tag_name, chn_subtags in (
-                        ("labels", ["labelx", "chn"]),
-                        ("grammar", []),
-                        ("use", ["uset", "chn"]),
-                    ):
-                        g_node = webtop.find("span", class_=tag_name)
-                        if not g_node:
+                # ---- Redirect ----
+                if "@@@LINK=" in content:
+                    raw_target = content.replace("@@@LINK=", "").strip()
+                    target = raw_target.split("|")[0].strip()
+                    for w in words:
+                        if w == target:
                             continue
-                        chn_text = ""
-                        if chn_subtags:
-                            cn = g_node.find(chn_subtags[0]) or g_node.find("chn")
-                            if cn:
-                                chn_text = cn.get_text(separator="", strip=True)
-                                for c in g_node.find_all(chn_subtags + ["chn"]):
-                                    c.decompose()
-                        eng = g_node.get_text(separator=" ", strip=True).strip("()[] ")
-                        txt = f"{eng} {chn_text}".strip()
-                        if txt:
-                            global_meta.append(f"[{txt}]")
+                        if w not in redirects:
+                            redirects[w] = []
+                        if target not in redirects[w]:
+                            redirects[w].append(target)
+                    continue
 
-                raw_senses = entry_block.find_all("li", class_="sense")
-                sense_data = []
+                # ---- Standard entry ----
+                soup = BeautifulSoup(content, "html.parser")
 
-                for sense in raw_senses:
-                    # Local meta tags
-                    local_meta = []
-                    for tag_name, chn_subtags in (
-                        ("labels", ["labelx", "chn"]),
-                        ("grammar", []),
-                        ("use", ["uset", "chn"]),
-                        ("dis-g", ["dtxtx", "chn"]),
+                # Extract display word from HTML headword; fall back to first MDX key.
+                hw = soup.find("h1", class_="headword")
+                display_word = hw.get_text(strip=True) if hw else words[0]
+                display_word = re.sub(r"[\u2000-\u200A\u202F\u00A0]", " ", display_word)
+                for w in words:
+                    mdx_to_display[w] = display_word
+
+                entries_list = []
+                entry_blocks = soup.find_all("div", class_="entry")
+                if not entry_blocks:
+                    entry_blocks = soup.find_all("span", class_="idm-g")
+
+                for entry_block in entry_blocks:
+                    pos_tag = entry_block.find("span", class_="pos")
+                    pos = pos_tag.get_text(strip=True) if pos_tag else ""
+                    if (
+                        not pos
+                        and entry_block.name == "span"
+                        and "idm-g" in entry_block.get("class", [])
                     ):
-                        l_node = sense.find("span", class_=tag_name)
-                        if not l_node:
+                        pos = "idiom"
+
+                    # --- Global meta tags (entry level) ---
+                    global_meta_parts = []
+                    webtop = entry_block.find("div", class_="webtop")
+                    if webtop:
+                        global_meta_parts = _extract_meta_parts(webtop, META_GLOBAL)
+
+                    raw_senses = entry_block.find_all("li", class_="sense")
+                    sense_data = []
+
+                    for sense in raw_senses:
+                        # --- Local meta tags (scoped to sensetop) ---
+                        local_meta_parts = []
+                        sensetop = sense.find("span", class_="sensetop")
+                        if sensetop:
+                            local_meta_parts = _extract_meta_parts(
+                                sensetop, META_LOCAL
+                            )
+
+                        # --- Idiom isolation: use idm_webtop meta, NOT global_meta ---
+                        idiom_label = ""
+                        idm_g = sense.find_parent("span", class_="idm-g")
+                        if idm_g:
+                            idm_tag = idm_g.find("span", class_="idm")
+                            if idm_tag:
+                                idiom_label = idm_tag.get_text(
+                                    separator=" ", strip=True
+                                )
+
+                            idiom_meta_parts = []
+                            idm_webtop = idm_g.find("div", class_="webtop")
+                            if idm_webtop:
+                                idiom_meta_parts = _extract_meta_parts(
+                                    idm_webtop, META_GLOBAL
+                                )
+                            combined_meta = idiom_meta_parts + local_meta_parts
+                        else:
+                            combined_meta = global_meta_parts + local_meta_parts
+
+                        meta_info = " ".join(
+                            dict.fromkeys(combined_meta)
+                        )  # dedup preserving order
+
+                        # --- British / American variants ---
+                        variant_tags = sense.find_all(
+                            ["div", "span"], class_="variants"
+                        )
+                        var_parts = []
+                        if variant_tags:
+                            for var in variant_tags:
+                                for chn_tag in var.find_all(["labelx", "chn"]):
+                                    chn_txt = chn_tag.get_text(strip=True)
+                                    chn_tag.replace_with(
+                                        f" {chn_txt} " if chn_txt else ""
+                                    )
+                                var_text = var.get_text(
+                                    separator=" ", strip=True
+                                ).strip("() ")
+                                var_text = re.sub(r"\s+", " ", var_text)
+                                var_text = var_text.replace(
+                                    "British English 英式英语", "英式对应词:"
+                                )
+                                var_text = var_text.replace(
+                                    "North American English 美式英语", "美式对应词:"
+                                )
+                                if var_text:
+                                    var_parts.append(var_text)
+                                var.decompose()
+
+                        # --- English definition ---
+                        def_tag = sense.find("span", class_="def")
+                        eng_def = (
+                            def_tag.get_text(separator=" ", strip=True)
+                            if def_tag
+                            else ""
+                        )
+                        if var_parts:
+                            eng_def = (
+                                f"[{' | '.join(var_parts)}] {eng_def}".strip()
+                            )
+
+                        # --- Construction frames (not inside example lists) ---
+                        cf_tags = sense.find_all("span", class_="cf")
+                        main_cfs = [
+                            cf
+                            for cf in cf_tags
+                            if not cf.find_parent("ul", class_="examples")
+                        ]
+                        cf_text = ""
+                        if main_cfs:
+                            cf_text = " | ".join(
+                                c.get_text(separator=" ", strip=True) for c in main_cfs
+                            )
+
+                        # --- Chinese definition ---
+                        chn_def = ""
+                        deft_tag = sense.find(["deft", "chn"])
+                        if deft_tag:
+                            for ai in deft_tag.find_all("ai"):
+                                t = ai.get_text(separator="", strip=True)
+                                if t:
+                                    ai.replace_with(f"[AI机翻] {t}")
+                            for leon in deft_tag.find_all("leon"):
+                                t = leon.get_text(separator="", strip=True)
+                                if t:
+                                    leon.replace_with(f"[个人审校] {t}")
+                            chn_def = deft_tag.get_text(separator=" ", strip=True)
+
+                        # --- Cross-references ---
+                        xref_node = extract_xrefs(sense)
+
+                        if not eng_def and not chn_def:
                             continue
-                        chn_text = ""
-                        if chn_subtags:
-                            cn = l_node.find(chn_subtags[0]) or l_node.find("chn")
-                            if cn:
-                                chn_text = cn.get_text(separator="", strip=True)
-                                for c in l_node.find_all(chn_subtags + ["chn"]):
-                                    c.decompose()
-                        eng = l_node.get_text(separator=" ", strip=True).strip("()[] ")
-                        txt = f"{eng} {chn_text}".strip()
-                        if txt:
-                            local_meta.append(f"[{txt}]")
 
-                    combined_meta = global_meta + local_meta
-                    meta_info = " ".join(dict.fromkeys(combined_meta))
+                        # --- Examples ---
+                        examples = extract_examples(sense)
 
-                    # English definition
-                    def_tag = sense.find("span", class_="def")
-                    eng_def = (
-                        def_tag.get_text(separator=" ", strip=True) if def_tag else ""
-                    )
-
-                    # Construction frames (not inside example lists)
-                    cf_tags = sense.find_all("span", class_="cf")
-                    main_cfs = [
-                        cf
-                        for cf in cf_tags
-                        if not cf.find_parent("ul", class_="examples")
-                    ]
-                    cf_text = ""
-                    if main_cfs:
-                        cf_text = " | ".join(
-                            c.get_text(separator=" ", strip=True) for c in main_cfs
+                        sense_data.append(
+                            {
+                                "meta": meta_info or None,
+                                "cf": cf_text or None,
+                                "eng_def": eng_def or None,
+                                "chn_def": chn_def or None,
+                                "examples": examples,
+                                "xref": xref_node,
+                                "idiom": idiom_label or None,
+                            }
                         )
 
-                    # Chinese definition
-                    chn_def = ""
-                    deft_tag = sense.find(["deft", "chn"])
-                    if deft_tag:
-                        for ai in deft_tag.find_all("ai"):
-                            t = ai.get_text(separator="", strip=True)
-                            if t:
-                                ai.replace_with(f"[AI机翻] {t}")
-                        for leon in deft_tag.find_all("leon"):
-                            t = leon.get_text(separator="", strip=True)
-                            if t:
-                                leon.replace_with(f"[个人审校] {t}")
-                        chn_def = deft_tag.get_text(separator=" ", strip=True)
+                    # --- Phrasal-verb links ---
+                    pv_aside = entry_block.find("aside", class_="phrasal_verb_links")
+                    pv_links = []
+                    if pv_aside:
+                        pv_links = [
+                            pv.get_text(separator=" ", strip=True)
+                            for pv in pv_aside.find_all("span", class_="xh")
+                        ]
 
-                    # Cross-references (clickable query links)
-                    xref_node = extract_xrefs(sense)
+                    if sense_data or pv_links:
+                        tree = build_entry(
+                            display_word, pos, sense_data, pv_links or None
+                        )
+                        entries_list.append(
+                            {
+                                "pos": pos,
+                                "tree": tree,
+                                "word": display_word,
+                                "senses": sense_data,
+                                "pv_links": pv_links or None,
+                            }
+                        )
 
-                    if not eng_def and not chn_def:
-                        continue
-
-                    # Idiom label from enclosing <span class="idm-g">
-                    idiom_label = ""
-                    idm_g = sense.find_parent("span", class_="idm-g")
-                    if idm_g:
-                        idm_tag = idm_g.find("span", class_="idm")
-                        if idm_tag:
-                            idiom_label = idm_tag.get_text(separator=" ", strip=True)
-
-                    # Examples
-                    examples = extract_examples(sense)
-
-                    sense_data.append(
-                        {
-                            "meta": meta_info or None,
-                            "cf": cf_text or None,
-                            "eng_def": eng_def or None,
-                            "chn_def": chn_def or None,
-                            "examples": examples,
-                            "xref": xref_node,
-                            "idiom": idiom_label or None,
-                        }
-                    )
-
-                # Phrasal-verb links (rescue stubs as well)
-                pv_aside = entry_block.find("aside", class_="phrasal_verb_links")
-                pv_links = []
-                if pv_aside:
-                    pv_links = [
-                        pv.get_text(separator=" ", strip=True)
-                        for pv in pv_aside.find_all("span", class_="xh")
-                    ]
-
-                if sense_data or pv_links:
-                    tree = build_entry(word, pos, sense_data, pv_links or None)
-                    entries_list.append({"pos": pos, "tree": tree})
-
-            if entries_list:
-                real_entries[word] = entries_list
+                if entries_list:
+                    real_entries[display_word] = entries_list
+            else:
+                buffer.append(line)
 
     print(
-        f"Phase 1 Complete.  "
+        f"  [ok] Phase 1 Complete.  "
         f"Core entries: {len(real_entries)}, "
-        f"Raw redirects: {len(redirects)}"
+        f"Redirects: {len(redirects)}"
     )
 
-    # ---- Phase 2: Resolve chained redirects (kept for dead-link report) ----
-    print("Phase 2: Resolving Chained Redirects...")
-    dead_links = []
-    for word, target in redirects.items():
-        visited = {word}
-        while target in redirects and target not in visited:
-            visited.add(target)
-            target = redirects[target]
-        # Redirect target is an MDX key; look up its display form.
-        resolved = mdx_to_display.get(target, target)
-        if resolved not in real_entries:
-            dead_links.append(f"{word}  ==指向==>  {target}")
+    # =======================================================
+    # Phase 2: Resolve multi-directional redirect chains
+    # =======================================================
+    print("\nPhase 2/4: Resolving multi-directional redirect chains...")
+    resolved_redirects = {}
+    dead_links_report = []
 
-    if dead_links:
-        report = os.path.join(OUTPUT_DIR, "dead_links_report.txt")
-        with open(report, "w", encoding="utf-8") as f:
-            f.write(f"=== OALD 10 Dead Links Report ({len(dead_links)} total) ===\n\n")
-            f.write("\n".join(dead_links))
-        print(f"Dead links report: {report} ({len(dead_links)} entries)")
+    for word, targets in redirects.items():
+        valid_targets = []
+        for t in targets:
+            current_target = t
+            visited = {word}
+            while current_target in redirects and current_target not in visited:
+                visited.add(current_target)
+                current_target = redirects[current_target][0]
 
-    # ---- Phase 3: Generate term banks (format 3 structured content) ----
-    print("Phase 3: Generating Yomitan JSON Banks...")
+            resolved_display = mdx_to_display.get(current_target, current_target)
+            if (
+                resolved_display in real_entries
+                and resolved_display != word
+                and resolved_display not in valid_targets
+            ):
+                valid_targets.append(resolved_display)
 
-    # Remove old term banks but preserve other files
-    for fname in os.listdir(OUTPUT_DIR):
+        if valid_targets:
+            resolved_redirects[word] = valid_targets
+        else:
+            if word not in real_entries:
+                dead_links_report.append(
+                    f"{word}  ==指向==>  {' | '.join(targets)}"
+                )
+
+    print(
+        f"  [ok] Phase 2 Complete.  Recovered {len(resolved_redirects)} derivative words."
+    )
+
+    if dead_links_report:
+        report_path = os.path.join(output_dir, "dead_links_report.txt")
+        with open(report_path, "w", encoding="utf-8") as df:
+            df.write(
+                f"=== OALD 10 Dead Links Report ({len(dead_links_report)} total) ===\n\n"
+            )
+            df.write("\n".join(dead_links_report))
+        print(f"  [!] Dead links report: {report_path}")
+
+    # =======================================================
+    # Phase 3: Generate term banks with Joint PK dedup
+    # =======================================================
+    print("\nPhase 3/4: Generating Yomitan data chunks (Joint PK Dedup)...")
+
+    # Clean up old term banks
+    for fname in os.listdir(output_dir):
         if re.match(r"term_bank_\d+\.json$", fname):
-            os.remove(os.path.join(OUTPUT_DIR, fname))
+            os.remove(os.path.join(output_dir, fname))
+
+    def save_bank(data, index):
+        path = os.path.join(output_dir, f"term_bank_{index}.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=None)
 
     term_bank = []
     file_index = 1
     count = 0
+    merged_duplicates_report = []
 
-    def save_bank(data, idx):
-        path = os.path.join(OUTPUT_DIR, f"term_bank_{idx}.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=None)
+    def flush_bank():
+        nonlocal term_bank, file_index
+        save_bank(term_bank, file_index)
+        print(f"    term_bank_{file_index}.json  (Progress: {count})")
+        term_bank = []
+        file_index += 1
 
+    # ---- 3a. Output core entries ----
     for word, entries in real_entries.items():
-        for entry in entries:
+        for entry_data in entries:
             term_entry = [
                 word,
                 "",
-                entry["pos"],
+                entry_data["pos"],
                 "",
                 0,
-                [{"type": "structured-content", "content": entry["tree"]}],
+                [{"type": "structured-content", "content": entry_data["tree"]}],
                 count,
                 "",
             ]
             term_bank.append(term_entry)
             count += 1
             if len(term_bank) >= 10000:
-                save_bank(term_bank, file_index)
-                print(f"Generated term_bank_{file_index}.json  (Progress: {count})")
-                term_bank = []
-                file_index += 1
+                flush_bank()
+
+    # ---- 3b. Output derivative entries (with dedup & trace headers) ----
+    for word, root_targets in resolved_redirects.items():
+        # Collect unique (pos, tree_sig) -> metadata mapping across all targets
+        sig_map = {}  # (pos, tree_json) -> {targets: set, word, senses, pv_links}
+
+        for target in root_targets:
+            if target not in real_entries:
+                continue
+            for entry_data in real_entries[target]:
+                pos = entry_data["pos"]
+                senses_json = json.dumps(
+                    entry_data.get("senses", []), ensure_ascii=False, sort_keys=True
+                )
+                pv_json = json.dumps(
+                    entry_data.get("pv_links"), ensure_ascii=False, sort_keys=True
+                )
+                sig = (pos, senses_json, pv_json)
+                if sig not in sig_map:
+                    sig_map[sig] = {
+                        "targets": set(),
+                        "word": entry_data.get("word", target),
+                        "senses": entry_data.get("senses", []),
+                        "pv_links": entry_data.get("pv_links"),
+                    }
+                sig_map[sig]["targets"].add(target)
+
+        # Detect and report merged duplicates
+        for (pos, _, _), data in sig_map.items():
+            if len(data["targets"]) > 1:
+                def_preview = ""
+                if data["senses"]:
+                    first_sense = data["senses"][0]
+                    def_preview = first_sense.get("eng_def", "") or ""
+                    if def_preview:
+                        def_preview = def_preview.replace("\n", " ")[:80]
+                merged_duplicates_report.append(
+                    f"► Headword: [{word}]\n"
+                    f"  └ POS: {pos}\n"
+                    f"  └ Merged Sources: {' + '.join(sorted(data['targets']))}\n"
+                    + (f"  └ Definition: {def_preview}...\n" if def_preview else "")
+                )
+
+        # Output one entry per unique (pos, senses, pv_links) signature
+        for (pos, _, _), data in sig_map.items():
+            targets = sorted(data["targets"])
+            merged_sources = " / ".join(targets)
+            trace_text = f"({word} 衍生自 → {merged_sources})"
+            tree_with_trace = build_entry(
+                data["word"],
+                pos,
+                data["senses"],
+                data["pv_links"],
+                trace=trace_text,
+            )
+
+            term_entry = [
+                word,
+                "",
+                pos,
+                "",
+                -10,
+                [{"type": "structured-content", "content": tree_with_trace}],
+                count,
+                "",
+            ]
+            term_bank.append(term_entry)
+            count += 1
+            if len(term_bank) >= 10000:
+                flush_bank()
 
     if term_bank:
-        save_bank(term_bank, file_index)
-        print(f"Generated term_bank_{file_index}.json  (Final batch)")
+        flush_bank()
 
-    print(f"\nAll done!  Total valid entries: {count}")
+    print(f"  [ok] Phase 3 Complete.  Total valid entries: {count}")
 
+    # ---- Dump merged duplicates report ----
+    if merged_duplicates_report:
+        report_path = os.path.join(output_dir, "merged_duplicates_report.txt")
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(
+                "=== OALD 10 Deduplication & Merge Audit Report ===\n"
+                "Note: This list records redundant entries found and merged\n"
+                "      from the original dictionary data.\n\n"
+            )
+            f.writelines(merged_duplicates_report)
+        print(
+            f"  [!] Merged duplicates report: {report_path}  "
+            f"(Intercepted {len(merged_duplicates_report)} upstream duplications)"
+        )
+
+    # =======================================================
+    # Phase 4: Metadata generation & auto-packaging
+    # =======================================================
+    print("\nPhase 4/4: Generating metadata and packaging...")
+    generate_metadata_files(output_dir)
+    package_and_cleanup(output_dir)
+
+    print(f"\nAll done!  Total entries: {count}")
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    parse_mdict()
+    parser = argparse.ArgumentParser(
+        description="Convert unpacked OALD10 MDX text to Yomitan JSON (format 3)."
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        required=True,
+        help="Path to the unpacked oaldpe.txt file",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="./yomitan_out",
+        help="Directory for generated Yomitan files (default: ./yomitan_out)",
+    )
+    args = parser.parse_args()
+    parse_mdict_stable(args.input, args.output)
