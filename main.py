@@ -460,13 +460,39 @@ def parse_mdict_stable(input_file, output_dir):
                     sense_data = []
 
                     for sense in raw_senses:
-                        # --- Local meta tags (scoped to sensetop) ---
+                        # --- Local meta tags ---
+                        # 1) tags inside <span class="sensetop">
                         local_meta_parts = []
                         sensetop = sense.find("span", class_="sensetop")
                         if sensetop:
                             local_meta_parts = _extract_meta_parts(
                                 sensetop, META_LOCAL
                             )
+
+                        # 2) tags that are direct children of <li class="sense">
+                        #    but outside <span class="sensetop">
+                        #    (e.g. chip: labels / grammar are siblings of sensetop)
+                        for tag_name, chn_subtags in META_LOCAL:
+                            for node in sense.find_all(
+                                "span", class_=tag_name, recursive=False
+                            ):
+                                chn_text = ""
+                                if chn_subtags:
+                                    cn = node.find(chn_subtags[0]) or node.find("chn")
+                                    if cn:
+                                        chn_text = cn.get_text(
+                                            separator="", strip=True
+                                        )
+                                        for c in node.find_all(
+                                            chn_subtags + ["chn"]
+                                        ):
+                                            c.decompose()
+                                eng = node.get_text(
+                                    separator=" ", strip=True
+                                ).strip("()[] ")
+                                txt = f"{eng} {chn_text}".strip()
+                                if txt:
+                                    local_meta_parts.append(f"[{txt}]")
 
                         # --- Idiom isolation: use idm_webtop meta, NOT global_meta ---
                         idiom_label = ""
@@ -545,7 +571,14 @@ def parse_mdict_stable(input_file, output_dir):
 
                         # --- Chinese definition ---
                         chn_def = ""
-                        deft_tag = sense.find(["deft", "chn"])
+                        # Decompose label-like spans to prevent their <chn>
+                        # subtags from being mistaken as the definition
+                        for label_class in ("labels", "grammar", "use", "dis-g"):
+                            for label_tag in sense.find_all(
+                                "span", class_=label_class
+                            ):
+                                label_tag.decompose()
+                        deft_tag = sense.find("deft") or sense.find("chn")
                         if deft_tag:
                             for ai in deft_tag.find_all("ai"):
                                 t = ai.get_text(separator="", strip=True)
