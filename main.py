@@ -9,7 +9,7 @@ with CSS styling, collapsible examples, and no AI-translated content.
 
 Features: CLI interface, auto-packaging (index/tag_bank/zip), multi-key
 entries, multi-target redirects, strict DOM tag isolation, British/American
-variants extraction, Joint PK deduplication, and data forensics reports.
+variants extraction, and dead-link forensics report.
 """
 
 import json
@@ -87,23 +87,9 @@ def node(tag, content=None, *, data=None, lang=None, style=None, href=None, titl
     return n
 
 
-def build_entry(word, pos, senses, pv_links=None, trace=None):
-    """Assemble the structured-content tree for one word + POS.
-
-    If *trace* is given, a ``div.trace`` is prepended to the entry
-    body (used for redirect-derived entries).
-    """
+def build_entry(word, pos, senses, pv_links=None):
+    """Assemble the structured-content tree for one word + POS."""
     parts = []
-
-    # Trace header (derivative entries)
-    if trace:
-        parts.append(
-            node(
-                "div",
-                node("span", trace, data={"class": "trace-header"}),
-                data={"class": "trace"},
-            )
-        )
 
     # ---- Head ----
     head_parts = [node("span", word, data={"class": "word"})]
@@ -605,15 +591,7 @@ def parse_mdict_stable(input_file, output_dir):
                         tree = build_entry(
                             display_word, pos, sense_data, pv_links or None
                         )
-                        entries_list.append(
-                            {
-                                "pos": pos,
-                                "tree": tree,
-                                "word": display_word,
-                                "senses": sense_data,
-                                "pv_links": pv_links or None,
-                            }
-                        )
+                        entries_list.append({"pos": pos, "tree": tree})
 
                 if entries_list:
                     real_entries[display_word] = entries_list
@@ -627,14 +605,14 @@ def parse_mdict_stable(input_file, output_dir):
     )
 
     # =======================================================
-    # Phase 2: Resolve multi-directional redirect chains
+    # Phase 2: Resolve chained redirects (dead-link audit only)
     # =======================================================
-    print("\nPhase 2/4: Resolving multi-directional redirect chains...")
-    resolved_redirects = {}
+    print("\nPhase 2/4: Resolving chained redirects...")
     dead_links_report = []
 
     for word, targets in redirects.items():
-        valid_targets = []
+        if word in real_entries:
+            continue
         for t in targets:
             current_target = t
             visited = {word}
@@ -643,24 +621,12 @@ def parse_mdict_stable(input_file, output_dir):
                 current_target = redirects[current_target][0]
 
             resolved_display = mdx_to_display.get(current_target, current_target)
-            if (
-                resolved_display in real_entries
-                and resolved_display != word
-                and resolved_display not in valid_targets
-            ):
-                valid_targets.append(resolved_display)
-
-        if valid_targets:
-            resolved_redirects[word] = valid_targets
-        else:
-            if word not in real_entries:
+            if resolved_display not in real_entries:
                 dead_links_report.append(
-                    f"{word}  ==指向==>  {' | '.join(targets)}"
+                    f"{word}  ==指向==>  {t}"
                 )
 
-    print(
-        f"  [ok] Phase 2 Complete.  Recovered {len(resolved_redirects)} derivative words."
-    )
+    print(f"  [ok] Phase 2 Complete.  Dead links: {len(dead_links_report)}")
 
     if dead_links_report:
         report_path = os.path.join(output_dir, "dead_links_report.txt")
@@ -668,13 +634,13 @@ def parse_mdict_stable(input_file, output_dir):
             df.write(
                 f"=== OALD 10 Dead Links Report ({len(dead_links_report)} total) ===\n\n"
             )
-            df.write("\n".join(dead_links_report))
+            df.write("\n".join(sorted(set(dead_links_report))))
         print(f"  [!] Dead links report: {report_path}")
 
     # =======================================================
-    # Phase 3: Generate term banks with Joint PK dedup
+    # Phase 3: Generate term banks
     # =======================================================
-    print("\nPhase 3/4: Generating Yomitan data chunks (Joint PK Dedup)...")
+    print("\nPhase 3/4: Generating Yomitan data chunks...")
 
     # Clean up old term banks
     for fname in os.listdir(output_dir):
@@ -689,7 +655,6 @@ def parse_mdict_stable(input_file, output_dir):
     term_bank = []
     file_index = 1
     count = 0
-    merged_duplicates_report = []
 
     def flush_bank():
         nonlocal term_bank, file_index
@@ -698,7 +663,6 @@ def parse_mdict_stable(input_file, output_dir):
         term_bank = []
         file_index += 1
 
-    # ---- 3a. Output core entries ----
     for word, entries in real_entries.items():
         for entry_data in entries:
             term_entry = [
@@ -716,95 +680,10 @@ def parse_mdict_stable(input_file, output_dir):
             if len(term_bank) >= 10000:
                 flush_bank()
 
-    # ---- 3b. Output derivative entries (with dedup & trace headers) ----
-    for word, root_targets in resolved_redirects.items():
-        # Collect unique (pos, tree_sig) -> metadata mapping across all targets
-        sig_map = {}  # (pos, tree_json) -> {targets: set, word, senses, pv_links}
-
-        for target in root_targets:
-            if target not in real_entries:
-                continue
-            for entry_data in real_entries[target]:
-                pos = entry_data["pos"]
-                senses_json = json.dumps(
-                    entry_data.get("senses", []), ensure_ascii=False, sort_keys=True
-                )
-                pv_json = json.dumps(
-                    entry_data.get("pv_links"), ensure_ascii=False, sort_keys=True
-                )
-                sig = (pos, senses_json, pv_json)
-                if sig not in sig_map:
-                    sig_map[sig] = {
-                        "targets": set(),
-                        "word": entry_data.get("word", target),
-                        "senses": entry_data.get("senses", []),
-                        "pv_links": entry_data.get("pv_links"),
-                    }
-                sig_map[sig]["targets"].add(target)
-
-        # Detect and report merged duplicates
-        for (pos, _, _), data in sig_map.items():
-            if len(data["targets"]) > 1:
-                def_preview = ""
-                if data["senses"]:
-                    first_sense = data["senses"][0]
-                    def_preview = first_sense.get("eng_def", "") or ""
-                    if def_preview:
-                        def_preview = def_preview.replace("\n", " ")[:80]
-                merged_duplicates_report.append(
-                    f"► Headword: [{word}]\n"
-                    f"  └ POS: {pos}\n"
-                    f"  └ Merged Sources: {' + '.join(sorted(data['targets']))}\n"
-                    + (f"  └ Definition: {def_preview}...\n" if def_preview else "")
-                )
-
-        # Output one entry per unique (pos, senses, pv_links) signature
-        for (pos, _, _), data in sig_map.items():
-            targets = sorted(data["targets"])
-            merged_sources = " / ".join(targets)
-            trace_text = f"({word} 衍生自 → {merged_sources})"
-            tree_with_trace = build_entry(
-                data["word"],
-                pos,
-                data["senses"],
-                data["pv_links"],
-                trace=trace_text,
-            )
-
-            term_entry = [
-                word,
-                "",
-                pos,
-                "",
-                -10,
-                [{"type": "structured-content", "content": tree_with_trace}],
-                count,
-                "",
-            ]
-            term_bank.append(term_entry)
-            count += 1
-            if len(term_bank) >= 10000:
-                flush_bank()
-
     if term_bank:
         flush_bank()
 
     print(f"  [ok] Phase 3 Complete.  Total valid entries: {count}")
-
-    # ---- Dump merged duplicates report ----
-    if merged_duplicates_report:
-        report_path = os.path.join(output_dir, "merged_duplicates_report.txt")
-        with open(report_path, "w", encoding="utf-8") as f:
-            f.write(
-                "=== OALD 10 Deduplication & Merge Audit Report ===\n"
-                "Note: This list records redundant entries found and merged\n"
-                "      from the original dictionary data.\n\n"
-            )
-            f.writelines(merged_duplicates_report)
-        print(
-            f"  [!] Merged duplicates report: {report_path}  "
-            f"(Intercepted {len(merged_duplicates_report)} upstream duplications)"
-        )
 
     # =======================================================
     # Phase 4: Metadata generation & auto-packaging
