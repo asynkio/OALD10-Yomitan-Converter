@@ -111,6 +111,25 @@ def build_entry(word, pos, senses, pv_links=None):
             sp.append(node("span", sense["meta"], data={"class": "meta"}))
         if sense.get("cf"):
             sp.append(node("span", sense["cf"], data={"class": "cf"}))
+        if sense.get("variant_items"):
+            # Group variants by label for compact display
+            by_label = {}
+            for vi in sense["variant_items"]:
+                label = vi["label"]
+                if label not in by_label:
+                    by_label[label] = []
+                by_label[label].append(vi["word"])
+            for label, words in by_label.items():
+                var_spans = [
+                    node("span", f"⬩ {label}: ", data={"class": "var-label"})
+                ]
+                for j, w in enumerate(words):
+                    if j > 0:
+                        var_spans.append(", ")
+                    var_spans.append(
+                        node("a", w, href=f"?query={quote(w)}&wildcards=off")
+                    )
+                sp.append(node("span", var_spans, data={"class": "variant"}))
         if sense.get("eng_def"):
             sp.append(node("span", sense["eng_def"], data={"class": "eng-def"}))
         if sense.get("chn_def"):
@@ -518,30 +537,39 @@ def parse_mdict_stable(input_file, output_dir):
                             dict.fromkeys(combined_meta)
                         )  # dedup preserving order
 
-                        # --- British / American variants ---
+                        # --- British / American variant cross-references ---
+                        variant_items = []
                         variant_tags = sense.find_all(
                             ["div", "span"], class_="variants"
                         )
-                        var_parts = []
                         if variant_tags:
                             for var in variant_tags:
-                                for chn_tag in var.find_all(["labelx", "chn"]):
-                                    chn_txt = chn_tag.get_text(strip=True)
-                                    chn_tag.replace_with(
-                                        f" {chn_txt} " if chn_txt else ""
-                                    )
-                                var_text = var.get_text(
-                                    separator=" ", strip=True
-                                ).strip("() ")
-                                var_text = re.sub(r"\s+", " ", var_text)
-                                var_text = var_text.replace(
-                                    "British English 英式英语", "英式对应词:"
-                                )
-                                var_text = var_text.replace(
-                                    "North American English 美式英语", "美式对应词:"
-                                )
-                                if var_text:
-                                    var_parts.append(var_text)
+                                for vg in var.find_all("span", class_="v-g"):
+                                    # Determine region label from <span class="labels">
+                                    region_label = "对应词"
+                                    labels_tag = vg.find("span", class_="labels")
+                                    if labels_tag:
+                                        raw_title = labels_tag.get("title", "")
+                                        has_en = "英式" in raw_title
+                                        has_am = "美式" in raw_title
+                                        if has_en and not has_am:
+                                            region_label = "英式对应词"
+                                        elif has_am and not has_en:
+                                            region_label = "美式对应词"
+
+                                    # Extract the reference word(s)
+                                    v_tag = vg.find("span", class_="v")
+                                    if v_tag:
+                                        word_text = v_tag.get_text(
+                                            separator=" ", strip=True
+                                        )
+                                        if word_text:
+                                            variant_items.append(
+                                                {
+                                                    "label": region_label,
+                                                    "word": word_text,
+                                                }
+                                            )
                                 var.decompose()
 
                         # --- English definition ---
@@ -551,10 +579,6 @@ def parse_mdict_stable(input_file, output_dir):
                             if def_tag
                             else ""
                         )
-                        if var_parts:
-                            eng_def = (
-                                f"[{' | '.join(var_parts)}] {eng_def}".strip()
-                            )
 
                         # --- Construction frames (not inside example lists) ---
                         cf_tags = sense.find_all("span", class_="cf")
@@ -608,6 +632,7 @@ def parse_mdict_stable(input_file, output_dir):
                                 "examples": examples,
                                 "xref": xref_node,
                                 "idiom": idiom_label or None,
+                                "variant_items": variant_items or None,
                             }
                         )
 
