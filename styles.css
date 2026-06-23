@@ -84,13 +84,13 @@ span[data-sc-class="cf"] {
 
 span[data-sc-class="variant"] {
   display: inline;
-  color: #2563eb;
+  color: color-mix(in srgb, #991b1b, var(--text-color, var(--fg, #111)));
   font-size: 0.82em;
   margin-right: 0.15em;
 }
 
 span[data-sc-class="variant"] a {
-  color: #2563eb;
+  color: color-mix(in srgb, #991b1b, var(--text-color, var(--fg, #111)));
   text-decoration: underline;
 }
 
